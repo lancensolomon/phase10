@@ -59,3 +59,38 @@ test('completion can be reversed and survives reloading without double advanceme
   run('changePhase(0, 1); phaseAdvancedThisRound = {}; loadGame(); wentOut(0)');
   assert.equal(run('players[0].phase'), 11);
 });
+
+test('winner leaves the final board frozen, including after reload', () => {
+  const { run, alerts } = game();
+  run('players[0].phase = 10; wentOut(0); roundScores[1].n = 2; finaliseScores()');
+  assert.equal(run('gameOver'), true);
+  assert.equal(run('players[0].phase'), 11);
+  assert.equal(run('players[0].score'), 100);
+  assert.equal(run('players[1].score'), 10);
+  run('loadGame(); changePhase(0, -1); wentOut(1); undoRound(); checkWinner()');
+  assert.equal(run('gameOver'), true);
+  assert.equal(run('players[0].phase'), 11);
+  assert.equal(run('players[0].matchWins'), 1);
+  assert.equal(alerts.length, 1);
+});
+
+test('lets go again resets phases and scores but keeps players and match wins', () => {
+  const { run } = game();
+  run('players[0].phase = 10; wentOut(0); finaliseScores(); resetScores()');
+  assert.equal(run('gameOver'), false);
+  assert.equal(run('players.length'), 2);
+  assert.equal(run('players[0].phase'), 1);
+  assert.equal(run('players[0].score'), 0);
+  assert.equal(run('players[0].matchWins'), 1);
+  assert.equal(run('history.length'), 0);
+  run('wentOut(0); finaliseScores()');
+  assert.equal(run('players[0].phase'), 2);
+});
+
+test('series winner also remains on the final board', () => {
+  const { run } = game();
+  run('players[0].phase = 10; players[0].matchWins = 1; wentOut(0); finaliseScores()');
+  assert.equal(run('gameOver'), true);
+  assert.equal(run('players[0].phase'), 11);
+  assert.equal(run('players[0].matchWins'), 2);
+});

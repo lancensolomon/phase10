@@ -76,8 +76,8 @@ footer {
   <div id="rendering-game" class="row g-3 mb-3"><!--  When we are rendering the game board let's show in a div little easter egg messages--></div>
   <div id="players" class="row g-3 mb-3"></div>
   <div id="system-buttons" class="d-flex justify-content-between flex-wrap">
-    <button class="btn btn-secondary mb-2" onclick="undoRound()"><i class="fa-duotone fa-solid fa-arrow-rotate-left"></i> Undo Last Round</button>
-    <button class="btn btn-warning mb-2" onclick="resetScores()"><i class="fa-duotone fa-solid fa-trash-undo"></i> Reset Scores</button>
+    <button class="btn btn-secondary mb-2" id="undoRoundButton" onclick="undoRound()"><i class="fa-duotone fa-solid fa-arrow-rotate-left"></i> Undo Last Round</button>
+    <button class="btn btn-warning mb-2" onclick="resetScores()"><i class="fa-duotone fa-solid fa-trash-undo"></i> Let’s Go Again</button>
     <button class="btn btn-danger mb-2" onclick="newGame()"><i class="fa-duotone fa-solid fa-sparkles"></i> New Game</button>
   </div>
 </div>
@@ -207,7 +207,7 @@ function renderGame(fadeIn = false) {
   renderingGameEasterEggs.innerHTML = '';
 
   //if we are fading in, then we show and hide things. Fade in, only happens at the start/end of a round
-  if(fadeIn) {
+  if(fadeIn && !gameOver) {
     //Scroll to the top of the game board
     window.scrollTo({ top: game.offsetTop, behavior: 'smooth' });
 
@@ -243,6 +243,9 @@ function renderGame(fadeIn = false) {
     }, fadeTime);
   }
 
+  document.getElementById('undoRoundButton').disabled = gameOver;
+  if (gameOver) playersDiv.style.opacity = 1;
+
   const maxMatchWins = Math.max(...players.map(p => p.matchWins));
   const seriesTied = players.filter(p => p.matchWins === maxMatchWins).length > 1;
 
@@ -252,7 +255,7 @@ function renderGame(fadeIn = false) {
     let whatPhase = whatPhaseNumber(p.phase);
 
     const phaseBadge = p.phase > 10
-            ? '<span class="w-100 badge bg-success">All 10 phases completed</span>'
+            ? '<span class="w-100 badge bg-success">Phase 10 completed — 1 set of 5 + 1 set of 3</span>'
             : `<span class="w-100 badge bg-primary">Phase: ${p.phase} - ${whatPhase}</span>`;
 
     const col = document.createElement('div');
@@ -266,8 +269,8 @@ function renderGame(fadeIn = false) {
     }
 
     const phaseAdvanceButton = phaseAdvancedThisRound[i]
-      ? `<button class="btn btn-sm btn-outline-danger w-100 h-100" onclick="changePhase(${i}, -1)"><i class="fa-duotone fa-solid fa-arrows-rotate-reverse"></i> Strike that, reverse it</button>`
-      : `<button class="btn btn-sm btn-outline-success me-1 w-100" onclick="changePhase(${i}, 1)"><i class="fa-duotone fa-solid fa-check"></i> Phase ${p.phase} completed</button>`;
+      ? `<button class="btn btn-sm btn-outline-danger w-100 h-100" ${gameOver ? 'disabled' : ''} onclick="changePhase(${i}, -1)"><i class="fa-duotone fa-solid fa-arrows-rotate-reverse"></i> Strike that, reverse it</button>`
+      : `<button class="btn btn-sm btn-outline-success me-1 w-100" ${gameOver ? 'disabled' : ''} onclick="changePhase(${i}, 1)"><i class="fa-duotone fa-solid fa-check"></i> Phase ${Math.min(10, p.phase)} completed</button>`;
 
     col.innerHTML = `
       <div class="card p-2 h-100">
@@ -285,7 +288,7 @@ function renderGame(fadeIn = false) {
             ${phaseAdvanceButton}
             </div>
             <div class="col-6">
-            <button class="btn btn-sm btn-outline-success w-100 h-100 " onclick="wentOut(${i})"><i class="fa-duotone fa-thin fa-flag-checkered"></i> I Went Out</button>
+            <button class="btn btn-sm btn-outline-success w-100 h-100 " ${gameOver ? 'disabled' : ''} onclick="wentOut(${i})"><i class="fa-duotone fa-thin fa-flag-checkered"></i> I Went Out</button>
           </div>
         </div>
       </div>
@@ -439,6 +442,7 @@ function finaliseScores() {
 
 /* ---------- Winner ---------- */
 function checkWinner() {
+  if (gameOver) return;
   const finalists = players.filter(p => p.phase > 10);
   if (!finalists.length) return;
 
@@ -452,12 +456,12 @@ function checkWinner() {
     alert(`🏆 ${winner.name} wins the BEST OF 3 SERIES!\nLowest score takes it.`);
   } else {
     alert(`🎉 ${winner.name} wins this game! (${finalists.length} players completed Phase 10 — lowest score wins)`);
-    resetScoresAfterWin();
   }
 }
 
 /* ---------- Undo / Reset ---------- */
 function undoRound() {
+  if (gameOver) return;
   if (!history.length) return alert('Nothing to undo');
   players = history.pop();
   gameOver = false;
@@ -465,23 +469,8 @@ function undoRound() {
   renderGame();
 }
 
-function resetScoresAfterWin() {
-  players = players.map(p => ({
-    name: p.name,
-    phase: 1,
-    score: 0,
-    matchWins: p.matchWins
-  }));
-  history = [];
-  roundEndedBy = null;
-  roundScores = {};
-  gameOver = false;
-  saveGame();
-  renderGame();
-}
-
 function resetScores() {
-  if (!confirm('Reset scores and phases but keep players?')) return;
+  if (!confirm('Let’s go again? Reset scores and phases, keeping players and match wins.')) return;
   initialiseState(true);
   saveGame();
   renderGame();

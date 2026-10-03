@@ -150,7 +150,7 @@ iconsToPreload.forEach(icon => {
 
 /* ---------- Persistence ---------- */
 function saveGame() {
-  localStorage.setItem('phase10Game', JSON.stringify({ players, history, gameOver }));
+  localStorage.setItem('phase10Game', JSON.stringify({ players, history, gameOver, phaseAdvancedThisRound }));
 }
 function loadGame() {
   const data = localStorage.getItem('phase10Game');
@@ -160,6 +160,7 @@ function loadGame() {
   players = parsed.players || [];
   history = parsed.history || [];
   gameOver = parsed.gameOver || false;
+  phaseAdvancedThisRound = parsed.phaseAdvancedThisRound || {};
 
   if (players.length) {
     setup.classList.add('d-none');
@@ -250,8 +251,8 @@ function renderGame(fadeIn = false) {
   players.forEach((p, i) => {
     let whatPhase = whatPhaseNumber(p.phase);
 
-    const phaseBadge = p.phase >= 10
-            ? '<span class="w-100 badge bg-success">PHASE 10 - ${whatPhase}</span>'
+    const phaseBadge = p.phase > 10
+            ? '<span class="w-100 badge bg-success">All 10 phases completed</span>'
             : `<span class="w-100 badge bg-primary">Phase: ${p.phase} - ${whatPhase}</span>`;
 
     const col = document.createElement('div');
@@ -307,7 +308,7 @@ function whatPhaseNumber(phase) {
     '2 sets of 4',
     '7 cards of one colour',
     '1 set of 5 + 1 set of 2',
-    'Phase 10'
+    '1 set of 5 + 1 set of 3'
   ];
   return phases[phase - 1] || '';
 }
@@ -332,7 +333,7 @@ function changePhase(i, d) {
   }
 
   // Apply the change
-  players[i].phase = Math.max(1, players[i].phase + d);
+  players[i].phase = Math.max(1, Math.min(11, players[i].phase + d));
 
   saveGame();
   renderGame();
@@ -347,7 +348,7 @@ function wentOut(i) {
   roundEndedBy = i;
   //When you go out, check if they have gone out on the phase too, otherwise also advance their phase
     if (!phaseAdvancedThisRound[i]) {
-        players[i].phase = Math.min(10, players[i].phase + 1);
+        players[i].phase = Math.min(11, players[i].phase + 1);
         phaseAdvancedThisRound[i] = true;
     }
   history.push(JSON.parse(JSON.stringify(players)));
@@ -390,7 +391,7 @@ function renderScoring() {
     scoreInputs.innerHTML += `
         <div class="${scoreInputsColumns}">
       <div class="card p-2 mb-2">
-        <p class="small text-muted">If multiple players hit Phase 10, lowest score wins</p>
+        <p class="small text-muted">If multiple players complete Phase 10, lowest score wins</p>
         <h6>${p.name}</h6>
         ${counterRow(i, '1–9 (5)', 'n', r.n)}
         ${counterRow(i, '10–12 (10)', 't', r.t)}
@@ -438,7 +439,7 @@ function finaliseScores() {
 
 /* ---------- Winner ---------- */
 function checkWinner() {
-  const finalists = players.filter(p => p.phase >= 10);
+  const finalists = players.filter(p => p.phase > 10);
   if (!finalists.length) return;
 
   const winner = finalists.reduce((best, p) => p.score < best.score ? p : best);
@@ -450,7 +451,7 @@ function checkWinner() {
   if (winner.matchWins >= 2) {
     alert(`🏆 ${winner.name} wins the BEST OF 3 SERIES!\nLowest score takes it.`);
   } else {
-    alert(`🎉 ${winner.name} wins this game! (${finalists.length} players hit Phase 10 — lowest score wins)`);
+    alert(`🎉 ${winner.name} wins this game! (${finalists.length} players completed Phase 10 — lowest score wins)`);
     resetScoresAfterWin();
   }
 }

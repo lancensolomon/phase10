@@ -5,13 +5,18 @@ const vm = require('node:vm');
 
 function game() {
   const element = () => ({ innerHTML: '', value: '', style: {}, classList: { add() {}, remove() {} }, appendChild() {}, focus() {}, addEventListener() {} });
+  const elements = new Map();
+  const getElement = id => {
+    if (!elements.has(id)) elements.set(id, element());
+    return elements.get(id);
+  };
   const alerts = [];
   const saved = new Map();
   const context = vm.createContext({
-    document: { getElementById: element, createElement: element, body: element() },
+    document: { getElementById: getElement, createElement: element, body: element() },
     window: { innerWidth: 400, addEventListener() {}, scrollTo() {} },
     navigator: {}, playerName: element(), scoreInputs: element(),
-    localStorage: { getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value) },
+    localStorage: { removeItem: key => saved.delete(key), getItem: key => saved.get(key), setItem: (key, value) => saved.set(key, value) },
     alert: message => alerts.push(message), confirm: () => true, setTimeout() {},
   });
   const html = fs.readFileSync(`${__dirname}/index.html`, 'utf8');
@@ -93,4 +98,53 @@ test('series winner also remains on the final board', () => {
   assert.equal(run('gameOver'), true);
   assert.equal(run('players[0].phase'), 11);
   assert.equal(run('players[0].matchWins'), 2);
+});
+
+test('setup accepts four phases and phase 3 does not end the game', () => {
+  const { run, alerts } = game();
+  run("phaseCountSelect.value = '4'; startGame(); players[0].phase = 3; players[1].phase = 2; wentOut(0); finaliseScores()");
+  assert.equal(run('totalPhases'), 4);
+  assert.equal(run('players[0].phase'), 4);
+  assert.equal(run('gameOver'), false);
+  assert.equal(alerts.length, 0);
+});
+
+test('four phase game finishes after phase 4 and stays frozen across reloads', () => {
+  const { run, alerts } = game();
+  run("phaseCountSelect.value = '4'; startGame(); players[0].phase = 4; players[1].phase = 3; wentOut(0); finaliseScores(); totalPhases = 10; loadGame()");
+  assert.equal(run('totalPhases'), 4);
+  assert.equal(run('players[0].phase'), 5);
+  assert.equal(run('gameOver'), true);
+  assert.match(alerts[0], /completed phase 4/);
+  run('resetScores()');
+  assert.equal(run('totalPhases'), 4);
+  assert.equal(run('players[0].phase'), 1);
+  assert.equal(run('players[0].matchWins'), 1);
+});
+
+test('manual final-phase completion and scores determine the shorter game winner', () => {
+  const { run } = game();
+  run('totalPhases = 4; players[0].phase = 4; players[1].phase = 4; players[1].score = 95; changePhase(0, 1); changePhase(1, 1); wentOut(0); roundScores[1].n = 2; finaliseScores()');
+  assert.equal(run('players[0].phase'), 5);
+  assert.equal(run('players[0].matchWins'), 1);
+  assert.equal(run('players[1].matchWins'), 0);
+});
+
+test('one phase games end after phase 1; new game restores ten phase default', () => {
+  const { run } = game();
+  run('totalPhases = 1; players[0].phase = 1; players[1].phase = 1; wentOut(0); finaliseScores()');
+  assert.equal(run('gameOver'), true);
+  assert.equal(run('players[0].phase'), 2);
+  run('newGame()');
+  assert.equal(run('totalPhases'), 10);
+  assert.equal(run('players.length'), 0);
+});
+
+test('legacy saves and invalid phase counts default to ten', () => {
+  const { run } = game();
+  for (const value of [undefined, null, '', 0, 11, 2.5, 'invalid']) {
+    assert.equal(run('validPhaseCount(' + JSON.stringify(value) + ')'), 10);
+  }
+  run("localStorage.setItem('phase10Game', JSON.stringify({ players, history, gameOver })); totalPhases = 4; loadGame()");
+  assert.equal(run('totalPhases'), 10);
 });

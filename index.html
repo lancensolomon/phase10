@@ -67,12 +67,29 @@ footer {
     <button class="btn btn-primary" onclick="addPlayer()"><i class="fa-duotone fa-solid fa-plus"></i> Add</button>
   </div>
   <ul id="playerList" class="list-group mb-3"></ul>
+  <div class="mb-3">
+    <label for="phaseCount" class="form-label">How many phases?</label>
+    <select id="phaseCount" class="form-select">
+      <option value="1">1 phase</option>
+      <option value="2">2 phases</option>
+      <option value="3">3 phases</option>
+      <option value="4">4 phases</option>
+      <option value="5">5 phases</option>
+      <option value="6">6 phases</option>
+      <option value="7">7 phases</option>
+      <option value="8">8 phases</option>
+      <option value="9">9 phases</option>
+      <option value="10" selected>10 phases</option>
+    </select>
+    <div class="form-text">Play from phase 1 through your chosen final phase.</div>
+  </div>
   <button class="btn btn-success w-100" onclick="startGame()"><i class="fa-duotone fa-solid fa-play"></i> Start Game</button>
 </div>
 
 <!-- GAME -->
 <div id="game" class="d-none mb-4">
   <h2>Game Board</h2>
+  <p id="phaseCountSummary" class="text-center text-muted"></p>
   <div id="rendering-game" class="row g-3 mb-3"><!--  When we are rendering the game board let's show in a div little easter egg messages--></div>
   <div id="players" class="row g-3 mb-3"></div>
   <div id="system-buttons" class="d-flex justify-content-between flex-wrap">
@@ -103,6 +120,7 @@ let roundEndedBy = null;
 let history = [];
 let roundScores = {};
 let gameOver = false;
+let totalPhases = 10;
 let phaseAdvancedThisRound = {}; // track which players have advanced phase this round
 
 // DOM references
@@ -113,6 +131,8 @@ const setup = document.getElementById('setup');
 const game = document.getElementById('game');
 const scoring = document.getElementById('scoring');
 const rubberBanner = document.getElementById('rubberBanner');
+const phaseCountSelect = document.getElementById('phaseCount');
+const phaseCountSummary = document.getElementById('phaseCountSummary');
 const systemButtons = document.getElementById('system-buttons');
 
 //pre-load all icons
@@ -150,13 +170,15 @@ iconsToPreload.forEach(icon => {
 
 /* ---------- Persistence ---------- */
 function saveGame() {
-  localStorage.setItem('phase10Game', JSON.stringify({ players, history, gameOver, phaseAdvancedThisRound }));
+  localStorage.setItem('phase10Game', JSON.stringify({ players, history, gameOver, phaseAdvancedThisRound, totalPhases }));
 }
 function loadGame() {
   const data = localStorage.getItem('phase10Game');
   if (!data) return;
 
   const parsed = JSON.parse(data);
+  totalPhases = validPhaseCount(parsed.totalPhases);
+  phaseCountSelect.value = String(totalPhases);
   players = parsed.players || [];
   history = parsed.history || [];
   gameOver = parsed.gameOver || false;
@@ -192,8 +214,14 @@ function renderPlayerList() {
   });
 }
 
+function validPhaseCount(value) {
+  const count = Number(value);
+  return Number.isInteger(count) && count >= 1 && count <= 10 ? count : 10;
+}
+
 function startGame() {
   if (players.length < 2) return alert('Add at least 2 players');
+  totalPhases = validPhaseCount(phaseCountSelect.value);
   setup.classList.add('d-none');
   game.classList.remove('d-none');
   saveGame();
@@ -203,6 +231,7 @@ function startGame() {
 /* ---------- Game Board ---------- */
 function renderGame(fadeIn = false) {
   const fadeTime = 1500;
+  phaseCountSummary.textContent = `Playing ${totalPhases} ${totalPhases === 1 ? 'phase' : 'phases'} — finish phase ${totalPhases} to win.`;
   playersDiv.innerHTML = '';
   renderingGameEasterEggs.innerHTML = '';
 
@@ -254,8 +283,8 @@ function renderGame(fadeIn = false) {
   players.forEach((p, i) => {
     let whatPhase = whatPhaseNumber(p.phase);
 
-    const phaseBadge = p.phase > 10
-            ? '<span class="w-100 badge bg-success">Phase 10 completed — 1 set of 5 + 1 set of 3</span>'
+    const phaseBadge = p.phase > totalPhases
+            ? `<span class="w-100 badge bg-success">Phase ${totalPhases} completed — ${whatPhaseNumber(totalPhases)}</span>`
             : `<span class="w-100 badge bg-primary">Phase: ${p.phase} - ${whatPhase}</span>`;
 
     const col = document.createElement('div');
@@ -270,7 +299,7 @@ function renderGame(fadeIn = false) {
 
     const phaseAdvanceButton = phaseAdvancedThisRound[i]
       ? `<button class="btn btn-sm btn-outline-danger w-100 h-100" ${gameOver ? 'disabled' : ''} onclick="changePhase(${i}, -1)"><i class="fa-duotone fa-solid fa-arrows-rotate-reverse"></i> Strike that, reverse it</button>`
-      : `<button class="btn btn-sm btn-outline-success me-1 w-100" ${gameOver ? 'disabled' : ''} onclick="changePhase(${i}, 1)"><i class="fa-duotone fa-solid fa-check"></i> Phase ${Math.min(10, p.phase)} completed</button>`;
+      : `<button class="btn btn-sm btn-outline-success me-1 w-100" ${gameOver ? 'disabled' : ''} onclick="changePhase(${i}, 1)"><i class="fa-duotone fa-solid fa-check"></i> Phase ${Math.min(totalPhases, p.phase)} completed</button>`;
 
     col.innerHTML = `
       <div class="card p-2 h-100">
@@ -336,7 +365,7 @@ function changePhase(i, d) {
   }
 
   // Apply the change
-  players[i].phase = Math.max(1, Math.min(11, players[i].phase + d));
+  players[i].phase = Math.max(1, Math.min(totalPhases + 1, players[i].phase + d));
 
   saveGame();
   renderGame();
@@ -351,7 +380,7 @@ function wentOut(i) {
   roundEndedBy = i;
   //When you go out, check if they have gone out on the phase too, otherwise also advance their phase
     if (!phaseAdvancedThisRound[i]) {
-        players[i].phase = Math.min(11, players[i].phase + 1);
+        players[i].phase = Math.min(totalPhases + 1, players[i].phase + 1);
         phaseAdvancedThisRound[i] = true;
     }
   history.push(JSON.parse(JSON.stringify(players)));
@@ -394,7 +423,7 @@ function renderScoring() {
     scoreInputs.innerHTML += `
         <div class="${scoreInputsColumns}">
       <div class="card p-2 mb-2">
-        <p class="small text-muted">If multiple players complete Phase 10, lowest score wins</p>
+        <p class="small text-muted">If multiple players complete phase ${totalPhases}, lowest score wins</p>
         <h6>${p.name}</h6>
         ${counterRow(i, '1–9 (5)', 'n', r.n)}
         ${counterRow(i, '10–12 (10)', 't', r.t)}
@@ -443,7 +472,7 @@ function finaliseScores() {
 /* ---------- Winner ---------- */
 function checkWinner() {
   if (gameOver) return;
-  const finalists = players.filter(p => p.phase > 10);
+  const finalists = players.filter(p => p.phase > totalPhases);
   if (!finalists.length) return;
 
   const winner = finalists.reduce((best, p) => p.score < best.score ? p : best);
@@ -455,7 +484,7 @@ function checkWinner() {
   if (winner.matchWins >= 2) {
     alert(`🏆 ${winner.name} wins the BEST OF 3 SERIES!\nLowest score takes it.`);
   } else {
-    alert(`🎉 ${winner.name} wins this game! (${finalists.length} players completed Phase 10 — lowest score wins)`);
+    alert(`🎉 ${winner.name} wins this game! (${finalists.length} players completed phase ${totalPhases} — lowest score wins)`);
   }
 }
 
@@ -496,7 +525,11 @@ function initialiseState(keepPlayers = false) {
       score: 0,
       matchWins: p.matchWins || 0
     }));
-  } else players = [];
+  } else {
+    players = [];
+    totalPhases = 10;
+    phaseCountSelect.value = '10';
+  }
 
   phaseAdvancedThisRound = [];
   roundEndedBy = null;

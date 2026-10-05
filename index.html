@@ -17,6 +17,13 @@
 <script src="https://kit.fontawesome.com/b8655f32ca.js" crossorigin="anonymous"></script>
 
 <style>
+html { touch-action: pan-x pan-y; }
+
+button, select, input, a {
+  touch-action: manipulation;
+}
+input, select { font-size: 16px !important; }
+
 body {
   background: #f5f5f5;
   padding: 16px;
@@ -89,6 +96,7 @@ footer {
 <!-- GAME -->
 <div id="game" class="d-none mb-4">
   <h2>Game Board</h2>
+  <div id="tieBanner" class="alert alert-warning text-center d-none" role="status"></div>
   <p id="phaseCountSummary" class="text-center text-muted"></p>
   <div id="rendering-game" class="row g-3 mb-3"><!--  When we are rendering the game board let's show in a div little easter egg messages--></div>
   <div id="players" class="row g-3 mb-3"></div>
@@ -121,6 +129,7 @@ let history = [];
 let roundScores = {};
 let gameOver = false;
 let totalPhases = 10;
+let tiePlayers = [];
 let phaseAdvancedThisRound = {}; // track which players have advanced phase this round
 
 // DOM references
@@ -131,6 +140,7 @@ const setup = document.getElementById('setup');
 const game = document.getElementById('game');
 const scoring = document.getElementById('scoring');
 const rubberBanner = document.getElementById('rubberBanner');
+const tieBanner = document.getElementById('tieBanner');
 const phaseCountSelect = document.getElementById('phaseCount');
 const phaseCountSummary = document.getElementById('phaseCountSummary');
 const systemButtons = document.getElementById('system-buttons');
@@ -170,7 +180,7 @@ iconsToPreload.forEach(icon => {
 
 /* ---------- Persistence ---------- */
 function saveGame() {
-  localStorage.setItem('phase10Game', JSON.stringify({ players, history, gameOver, phaseAdvancedThisRound, totalPhases }));
+  localStorage.setItem('phase10Game', JSON.stringify({ players, history, gameOver, phaseAdvancedThisRound, totalPhases, tiePlayers }));
 }
 function loadGame() {
   const data = localStorage.getItem('phase10Game');
@@ -180,6 +190,7 @@ function loadGame() {
   totalPhases = validPhaseCount(parsed.totalPhases);
   phaseCountSelect.value = String(totalPhases);
   players = parsed.players || [];
+  tiePlayers = (parsed.tiePlayers || []).filter(i => Number.isInteger(i) && players[i]);
   history = parsed.history || [];
   gameOver = parsed.gameOver || false;
   phaseAdvancedThisRound = parsed.phaseAdvancedThisRound || {};
@@ -272,7 +283,11 @@ function renderGame(fadeIn = false) {
     }, fadeTime);
   }
 
-  document.getElementById('undoRoundButton').disabled = gameOver;
+  tieBanner.classList.toggle('d-none', !tiePlayers.length);
+  tieBanner.textContent = tiePlayers.length
+    ? `It’s a tie! ${tiePlayers.map(i => players[i].name).join(' and ')} must replay phase ${totalPhases}. First to go out wins!`
+    : '';
+  document.getElementById('undoRoundButton').disabled = gameOver || tiePlayers.length > 0;
   if (gameOver) playersDiv.style.opacity = 1;
 
   const maxMatchWins = Math.max(...players.map(p => p.matchWins));
@@ -282,6 +297,8 @@ function renderGame(fadeIn = false) {
 
   players.forEach((p, i) => {
     let whatPhase = whatPhaseNumber(p.phase);
+    const phaseDisabled = gameOver || tiePlayers.length > 0;
+    const outDisabled = gameOver || (tiePlayers.length > 0 && !tiePlayers.includes(i));
 
     const phaseBadge = p.phase > totalPhases
             ? `<span class="w-100 badge bg-success">Phase ${totalPhases} completed — ${whatPhaseNumber(totalPhases)}</span>`
@@ -298,8 +315,8 @@ function renderGame(fadeIn = false) {
     }
 
     const phaseAdvanceButton = phaseAdvancedThisRound[i]
-      ? `<button class="btn btn-sm btn-outline-danger w-100 h-100" ${gameOver ? 'disabled' : ''} onclick="changePhase(${i}, -1)"><i class="fa-duotone fa-solid fa-arrows-rotate-reverse"></i> Strike that, reverse it</button>`
-      : `<button class="btn btn-sm btn-outline-success me-1 w-100" ${gameOver ? 'disabled' : ''} onclick="changePhase(${i}, 1)"><i class="fa-duotone fa-solid fa-check"></i> Phase ${Math.min(totalPhases, p.phase)} completed</button>`;
+      ? `<button class="btn btn-sm btn-outline-danger w-100 h-100" ${phaseDisabled ? 'disabled' : ''} onclick="changePhase(${i}, -1)"><i class="fa-duotone fa-solid fa-arrows-rotate-reverse"></i> Strike that, reverse it</button>`
+      : `<button class="btn btn-sm btn-outline-success me-1 w-100" ${phaseDisabled ? 'disabled' : ''} onclick="changePhase(${i}, 1)"><i class="fa-duotone fa-solid fa-check"></i> Phase ${Math.min(totalPhases, p.phase)} completed</button>`;
 
     col.innerHTML = `
       <div class="card p-2 h-100">
@@ -317,7 +334,7 @@ function renderGame(fadeIn = false) {
             ${phaseAdvanceButton}
             </div>
             <div class="col-6">
-            <button class="btn btn-sm btn-outline-success w-100 h-100 " ${gameOver ? 'disabled' : ''} onclick="wentOut(${i})"><i class="fa-duotone fa-thin fa-flag-checkered"></i> I Went Out</button>
+            <button class="btn btn-sm btn-outline-success w-100 h-100 " ${outDisabled ? 'disabled' : ''} onclick="wentOut(${i})"><i class="fa-duotone fa-thin fa-flag-checkered"></i> I Went Out</button>
           </div>
         </div>
       </div>
@@ -346,7 +363,7 @@ function whatPhaseNumber(phase) {
 }
 
 function changePhase(i, d) {
-  if (gameOver) return;
+  if (gameOver || tiePlayers.length) return;
 
   // Initialize tracking for this round if not present
   if (phaseAdvancedThisRound[i] === undefined) phaseAdvancedThisRound[i] = false;
@@ -375,7 +392,14 @@ function changePhase(i, d) {
 function wentOut(i) {
   //Confirm they want to end the round
     if (gameOver) return;
+    if (tiePlayers.length && !tiePlayers.includes(i)) return;
     if (!confirm(`${players[i].name}, are you sure you want to end the round?`)) return;
+    if (tiePlayers.length) {
+      players[i].phase = totalPhases + 1;
+      awardWinner(players[i], 'First to go out wins the tie-break round!');
+      renderGame();
+      return;
+    }
 
   roundEndedBy = i;
   //When you go out, check if they have gone out on the phase too, otherwise also advance their phase
@@ -425,6 +449,7 @@ function renderScoring() {
       <div class="card p-2 mb-2">
         <p class="small text-muted">If multiple players complete phase ${totalPhases}, lowest score wins</p>
         <h6>${p.name}</h6>
+        <p class="small text-muted">Cards remaining: ${cardCount(r)} / 10</p>
         ${counterRow(i, '1–9 (5)', 'n', r.n)}
         ${counterRow(i, '10–12 (10)', 't', r.t)}
         ${counterRow(i, 'Skips (15)', 's', r.s)}
@@ -435,6 +460,10 @@ function renderScoring() {
   });
 }
 
+function cardCount(cards) {
+  return cards.n + cards.t + cards.s + cards.w;
+}
+
 function counterRow(i, label, key, value) {
   return `
     <div class="d-flex align-items-center mb-1">
@@ -442,13 +471,14 @@ function counterRow(i, label, key, value) {
       <div class="btn-group btn-group-sm ms-auto">
         <button class="btn btn-outline-secondary" onclick="adjust(${i}, '${key}', -1)"><i class="fa-duotone fa-solid fa-minus"></i></button>
         <span class="px-2">${value}</span>
-        <button class="btn btn-outline-secondary" onclick="adjust(${i}, '${key}', 1)"><i class="fa-duotone fa-solid fa-plus"></i></button>
+        <button class="btn btn-outline-secondary" ${cardCount(roundScores[i]) >= 10 ? 'disabled' : ''} onclick="adjust(${i}, '${key}', 1)"><i class="fa-duotone fa-solid fa-plus"></i></button>
       </div>
     </div>
   `;
 }
 
 function adjust(i, key, d) {
+  if (d > 0 && cardCount(roundScores[i]) + d > 10) return;
   roundScores[i][key] = Math.max(0, roundScores[i][key] + d);
   renderScoring();
 }
@@ -471,26 +501,38 @@ function finaliseScores() {
 
 /* ---------- Winner ---------- */
 function checkWinner() {
-  if (gameOver) return;
+  if (gameOver || tiePlayers.length) return;
   const finalists = players.filter(p => p.phase > totalPhases);
   if (!finalists.length) return;
 
-  const winner = finalists.reduce((best, p) => p.score < best.score ? p : best);
+  const lowestScore = Math.min(...finalists.map(p => p.score));
+  const tied = finalists.filter(p => p.score === lowestScore);
+  if (tied.length > 1) {
+    tiePlayers = tied.map(p => players.indexOf(p));
+    tied.forEach(p => { p.phase = totalPhases; });
+    phaseAdvancedThisRound = {};
+    saveGame();
+    alert(`It’s a tie! ${tied.map(p => p.name).join(' and ')} must replay phase ${totalPhases}. First to go out wins!`);
+    return;
+  }
+  awardWinner(tied[0], `${finalists.length} players completed phase ${totalPhases} — lowest score wins`);
+}
 
+function awardWinner(winner, reason) {
   winner.matchWins += 1;
   gameOver = true;
+  tiePlayers = [];
   saveGame();
-
   if (winner.matchWins >= 2) {
-    alert(`🏆 ${winner.name} wins the BEST OF 3 SERIES!\nLowest score takes it.`);
+    alert(`🏆 ${winner.name} wins the BEST OF 3 SERIES!\n${reason}`);
   } else {
-    alert(`🎉 ${winner.name} wins this game! (${finalists.length} players completed phase ${totalPhases} — lowest score wins)`);
+    alert(`🎉 ${winner.name} wins this game! (${reason})`);
   }
 }
 
 /* ---------- Undo / Reset ---------- */
 function undoRound() {
-  if (gameOver) return;
+  if (gameOver || tiePlayers.length) return;
   if (!history.length) return alert('Nothing to undo');
   players = history.pop();
   gameOver = false;
@@ -531,6 +573,7 @@ function initialiseState(keepPlayers = false) {
     phaseCountSelect.value = '10';
   }
 
+  tiePlayers = [];
   phaseAdvancedThisRound = [];
   roundEndedBy = null;
   history = [];

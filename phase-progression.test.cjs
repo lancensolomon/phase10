@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 function game() {
-  const element = () => ({ innerHTML: '', value: '', style: {}, classList: { add() {}, remove() {} }, appendChild() {}, focus() {}, addEventListener() {} });
+  const element = () => ({ innerHTML: '', value: '', style: {}, classList: { add() {}, remove() {}, toggle() {} }, appendChild() {}, focus() {}, addEventListener() {} });
   const elements = new Map();
   const getElement = id => {
     if (!elements.has(id)) elements.set(id, element());
@@ -147,4 +147,37 @@ test('legacy saves and invalid phase counts default to ten', () => {
   }
   run("localStorage.setItem('phase10Game', JSON.stringify({ players, history, gameOver })); totalPhases = 4; loadGame()");
   assert.equal(run('totalPhases'), 10);
+});
+
+test('equal lowest scores announce only tied final-phase completers', () => {
+  const { run, alerts } = game();
+  run("totalPhases = 4; players = [{ name: 'A', phase: 5, score: 50, matchWins: 0 }, { name: 'B', phase: 5, score: 50, matchWins: 0 }, { name: 'C', phase: 5, score: 60, matchWins: 0 }, { name: 'D', phase: 4, score: 0, matchWins: 0 }]; checkWinner(); renderGame()");
+  assert.equal(run('gameOver'), false);
+  assert.equal(run('tiePlayers.join()'), '0,1');
+  assert.match(alerts[0], /A and B must replay phase 4/);
+  assert.equal(run('players[0].matchWins'), 0);
+  assert.equal(run('players[0].phase'), 4);
+  assert.match(run('tieBanner.textContent'), /First to go out wins/);
+  run('saveGame(); tiePlayers = []; loadGame(); wentOut(2); changePhase(0, 1); undoRound()');
+  assert.equal(run('tiePlayers.join()'), '0,1');
+  assert.equal(run('players[0].phase'), 4);
+  run('wentOut(1)');
+  assert.equal(run('gameOver'), true);
+  assert.equal(run('players[1].matchWins'), 1);
+  assert.equal(run('players[0].matchWins'), 0);
+  assert.equal(run('players[1].score'), 50);
+  assert.match(alerts[1], /B wins/);
+  run('resetScores()');
+  assert.equal(run('tiePlayers.length'), 0);
+});
+
+test('ten card limit applies across categories and permits correcting entries', () => {
+  const { run } = game();
+  run('wentOut(0); for (let i = 0; i < 6; i++) adjust(1, "n", 1); for (let i = 0; i < 4; i++) adjust(1, "w", 1); adjust(1, "s", 1); adjust(1, "t", 1)');
+  assert.equal(run('cardCount(roundScores[1])'), 10);
+  assert.equal(run('roundScores[1].s'), 0);
+  assert.match(run('scoreInputs.innerHTML'), /disabled onclick="adjust/);
+  run('adjust(1, "n", -1); adjust(1, "t", 1)');
+  assert.equal(run('cardCount(roundScores[1])'), 10);
+  assert.equal(run('roundScores[1].t'), 1);
 });
